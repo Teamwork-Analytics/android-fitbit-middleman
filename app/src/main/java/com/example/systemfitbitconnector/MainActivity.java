@@ -9,6 +9,10 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -68,16 +72,39 @@ public class MainActivity extends AppCompatActivity {
 
                 // Convert StringBuilder to String
                 final String receivedData = stringBuilder.toString();
+                forwardDataToNodeJsServer(receivedData);
 
                 // Update the UI with the received data
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         // Do something after received data (i.e. update UI / set Text View)
-                        Log.d("ServerThread", "Received Data: " + receivedData);
+                        Log.d("ServerThread", "Received + Forwared Data: " + receivedData);
                         // textView.setText(receivedData);
                     }
                 });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void forwardDataToNodeJsServer(String data) {
+            try {
+                URL url = new URL("http://<PC-IP-ADDRESS>:<NODEJS-SERVER-PORT>"); // Replace with your Node.js server URL
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+
+                OutputStream os = conn.getOutputStream();
+                os.write(data.getBytes());
+                os.flush();
+                os.close();
+
+                int responseCode = conn.getResponseCode();
+                Log.d("DataThread", "Response from Node.js server: " + responseCode);
+
+                conn.disconnect();
             } catch (Exception e) {
                 e.printStackTrace();
             }
