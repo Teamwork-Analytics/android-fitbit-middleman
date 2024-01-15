@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
 
         private void forwardDataToNodeJsServer(String data) {
             try {
-                URL url = new URL("http://<PC-IP-ADDRESS>:<NODEJS-SERVER-PORT>"); // Replace with your Node.js server URL
+                URL url = new URL("http://<PC-IP-ADDRESS>:<NODEJS-SERVER-PORT>"); // Replace with actual server URL
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
