@@ -12,6 +12,8 @@ import java.net.Socket;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 // TODO: make this app run in background
 
@@ -54,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
 
     class DataThread extends Thread {
         private Socket socket;
+        private ExecutorService executor = Executors.newSingleThreadExecutor(); // Shared executor
 
         DataThread(Socket socket) {
             this.socket = socket;
@@ -80,12 +83,11 @@ public class MainActivity extends AppCompatActivity {
                     input.read(buffer, 0, contentLength);
                     final String receivedData = new String(buffer);
 
-                    runOnUiThread(new Runnable() {
+                    executor.execute(new Runnable() {
                         @Override
                         public void run() {
                             Log.d("ServerThread", "Received Data: " + receivedData);
-                            // Process data here or update UI
-                            // TODO: forward to pc server
+                            forwardDataToNodeJsServer(receivedData);
                         }
                     });
                 }
@@ -97,23 +99,33 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-
+        @Override
+        public void interrupt() {
+            super.interrupt();
+            executor.shutdownNow(); // Shutdown the executor
+        }
 
         private void forwardDataToNodeJsServer(String data) {
             try {
-                URL url = new URL("http://<PC-IP-ADDRESS>:<NODEJS-SERVER-PORT>"); // Replace with actual server URL
+                URL url = new URL("http://192.168.68.62:3168/data"); // Replace with actual server URL
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setDoOutput(true);
 
                 OutputStream os = conn.getOutputStream();
-                os.write(data.getBytes());
+                os.write(data.getBytes("UTF-8")); // Specify charset
                 os.flush();
                 os.close();
 
                 int responseCode = conn.getResponseCode();
-                Log.d("DataThread", "Response from Node.js server: " + responseCode);
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    // Handle success
+                    Log.d("DataThread", "Successfully forwarded data. Response: " + responseCode);
+                } else {
+                    // Handle server error
+                    Log.d("DataThread", "Error forwarding data. Response: " + responseCode);
+                }
 
                 conn.disconnect();
             } catch (Exception e) {
@@ -125,6 +137,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // Shutdown DataThread's executor
+        if (serverThread != null) {
+            serverThread.interrupt();
+        }
         try {
             // Close the server socket when the activity is destroyed
             if (serverSocket != null) {
