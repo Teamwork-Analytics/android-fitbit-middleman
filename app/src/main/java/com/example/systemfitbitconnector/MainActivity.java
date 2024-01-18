@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+// TODO: make this app run in background
 
 public class MainActivity extends AppCompatActivity {
 
@@ -61,32 +62,42 @@ public class MainActivity extends AppCompatActivity {
         public void run() {
             try {
                 BufferedReader input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                final StringBuilder stringBuilder = new StringBuilder();
                 String inputLine;
-                while ((inputLine = input.readLine()) != null) {
-                    stringBuilder.append(inputLine); // Read the incoming data
+                int contentLength = -1;
 
+                // Read headers
+                while ((inputLine = input.readLine()) != null && !inputLine.isEmpty()) {
+                    if (inputLine.startsWith("Content-Length:")) {
+                        contentLength = Integer.parseInt(inputLine.split(": ")[1].trim());
+                    }
+                    // Avoid logging the header
+                    // Log.d("ServerThread", "Received Header: " + inputLine);
                 }
+
+                // Read body if Content-Length is found
+                if (contentLength > -1) {
+                    char[] buffer = new char[contentLength];
+                    input.read(buffer, 0, contentLength);
+                    final String receivedData = new String(buffer);
+
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Log.d("ServerThread", "Received Data: " + receivedData);
+                            // Process data here or update UI
+                            // TODO: forward to pc server
+                        }
+                    });
+                }
+
                 input.close();
                 socket.close();
-
-                // Convert StringBuilder to String
-                final String receivedData = stringBuilder.toString();
-                forwardDataToNodeJsServer(receivedData);
-
-                // Update the UI with the received data
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        // Do something after received data (i.e. update UI / set Text View)
-                        Log.d("ServerThread", "Received + Forwared Data: " + receivedData);
-                        // textView.setText(receivedData);
-                    }
-                });
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
+
+
 
         private void forwardDataToNodeJsServer(String data) {
             try {
