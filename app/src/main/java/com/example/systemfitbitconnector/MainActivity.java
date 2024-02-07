@@ -107,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
 
         private void forwardDataToNodeJsServer(String data) {
             try {
-                URL url = new URL("http://192.168.68.62:3168/data"); // Replace with actual server URL
+                URL url = new URL("http://49.127.36.41:3168/data"); // Replace with actual server URL
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
