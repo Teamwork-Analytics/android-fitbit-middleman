@@ -2,6 +2,9 @@ package com.example.systemfitbitconnector;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -31,6 +34,14 @@ public class MainActivity extends AppCompatActivity {
         // Starting the Server Thread
         this.serverThread = new Thread(new ServerThread());
         this.serverThread.start();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel("MyNotifications", "My Notifications", NotificationManager.IMPORTANCE_DEFAULT);
+            channel.setDescription("Channel description");
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            manager.createNotificationChannel(channel);
+        }
+
     }
 
     class ServerThread implements Runnable {
