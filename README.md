@@ -17,6 +17,10 @@ Android Studio. On the top right of Android Studio, select the devices connected
 After running the app, Android studio should install a dev version of the app in the phone. The app is called `System Fitbit Connector` on
 the device.
 
+### [Important for devices for teachers] Enable notification from device setting
+For the reminder/notification features to work properly, after installation, open the Setting app in the phone, navigate
+to Notification, and enable notification for this application (System Fitbit Connector).
+
 ## Configuration
 Prior installing the application, remember to change the url of the forwarding destination (the main pc server ip). The line to be changed can be found in 
 `MainActivity` class in `com.example.systemfitbitconnector`, or do a search for "Replace with actual server URL".
