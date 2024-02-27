@@ -2,8 +2,11 @@ package com.example.systemfitbitconnector;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+
+import android.content.pm.PackageManager;
 import android.util.Log;
 
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
@@ -35,6 +38,13 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
 
         // NotificationId is a unique int for each notification that you must define
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling ActivityCompat#requestPermissions
+            // here to request the missing permissions, however, it is hard to do in this class,
+            // please request permission in the main activity.
+            Log.d("FCM", "POST_NOTIFICATIONS permission not granted");
+            return;
+        }
         notificationManager.notify(new Random().nextInt(), builder.build());
     }
 

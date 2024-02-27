@@ -1,9 +1,13 @@
 package com.example.systemfitbitconnector;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import android.Manifest;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -34,6 +38,14 @@ public class MainActivity extends AppCompatActivity {
         // Starting the Server Thread
         this.serverThread = new Thread(new ServerThread());
         this.serverThread.start();
+
+        final int REQUEST_CODE = 1; // A random request code
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_CODE);
+            }
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel("MyNotifications", "My Notifications", NotificationManager.IMPORTANCE_DEFAULT);
