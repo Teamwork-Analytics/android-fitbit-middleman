@@ -28,7 +28,7 @@ public class MainActivity extends AppCompatActivity {
 
     private ServerSocket serverSocket;
     Thread serverThread = null;
-    private static final int SERVERPORT = 3000;
+    private static final int SERVER_PORT = 3000;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
         public void run() {
             Socket socket = null;
             try {
-                serverSocket = new ServerSocket(SERVERPORT); // Create the ServerSocket
+                serverSocket = new ServerSocket(SERVER_PORT); // Create the ServerSocket
             } catch (Exception e) {
                 e.printStackTrace();
             }
