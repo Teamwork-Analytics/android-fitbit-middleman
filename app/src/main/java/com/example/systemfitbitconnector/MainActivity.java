@@ -22,8 +22,6 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-// TODO: make this app run in background
-
 public class MainActivity extends AppCompatActivity {
 
     private ServerSocket serverSocket;
@@ -130,7 +128,7 @@ public class MainActivity extends AppCompatActivity {
 
         private void forwardDataToNodeJsServer(String data) {
             try {
-                URL url = new URL("http://49.127.36.41:3168/data"); // Replace with actual server URL
+                URL url = new URL("http://49.127.54.107:3168/data"); // Replace with actual server URL
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
