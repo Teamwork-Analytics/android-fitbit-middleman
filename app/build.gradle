@@ -3,6 +3,8 @@ plugins {
     id 'com.google.gms.google-services' // Google services Gradle plugin
 }
 
+apply plugin: "realm-android"
+
 android {
     compileSdk 34
 
@@ -27,6 +29,10 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
     namespace 'com.example.systemfitbitconnector'
+
+    realm {
+        syncEnabled = true
+    }
 }
 
 dependencies {

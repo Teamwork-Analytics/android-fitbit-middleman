@@ -19,6 +19,15 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import io.realm.Realm;
+import io.realm.mongodb.App;
+import io.realm.mongodb.AppConfiguration;
+import io.realm.mongodb.Credentials;
+import io.realm.mongodb.mongo.MongoClient;
+import io.realm.mongodb.mongo.MongoCollection;
+import io.realm.mongodb.mongo.MongoDatabase;
+import org.bson.Document;
+
 public class MainActivity extends AppCompatActivity {
     // TODO: try configure app to increase background runtime/ always run on background
 
@@ -31,12 +40,29 @@ public class MainActivity extends AppCompatActivity {
     private ServerSocket serverSocket;
     Thread serverThread = null;
 
+    private App realmApp;
+    private String pcServerIp = null;
+
     // Life-Cycle Methods
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        // start ServerThread for receiving and forwarding data
+
+        // Initialize MongoDB Realm
+        Realm.init(this);
+        realmApp = new App(new AppConfiguration.Builder("middleman-realm-okirbgw").build());
+
+        // Log in to MongoDB Realm
+        realmApp.loginAsync(Credentials.anonymous(), it -> {
+            if (it.isSuccess()) {
+                fetchServerIp();
+            } else {
+                Log.e("MongoDB", "Failed to log in to MongoDB Realm", it.getError());
+            }
+        });
+
+        // Start ServerThread for receiving and forwarding data
         this.serverThread = new Thread(new ServerThread());
         this.serverThread.start();
     }
@@ -51,11 +77,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // shutdown DataThread's executor
+        // Shutdown DataThread's executor
         if (serverThread != null) {
             serverThread.interrupt();
         }
-        // close server socket when activity is destroyed
+        // Close server socket when activity is destroyed
         try {
             if (serverSocket != null) {
                 serverSocket.close();
@@ -81,8 +107,8 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Method to request notification permission. Triggered when the app is installed or restarted
      */
-    private void requestNotificationPermission(){
-        // not checking sdk version as the code is built for the latest API (34)
+    private void requestNotificationPermission() {
+        // Not checking SDK version as the code is built for the latest API (34)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
@@ -92,15 +118,34 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Method to create notification channel. The chanel created will be used in NotificationReceiver.
+     * Method to create notification channel. The channel created will be used in NotificationReceiver.
      */
-    private void createNotificationChannel(){
+    private void createNotificationChannel() {
         int notificationImportance = NotificationManager.IMPORTANCE_HIGH;
         NotificationChannel channel = new NotificationChannel(FIREBASE_NOTIFICATION_CHANNEL_ID,
                 FIREBASE_NOTIFICATION_CHANNEL_NAME, notificationImportance);
         channel.setDescription(FIREBASE_NOTIFICATION_CHANNEL_DESCRIPTION);
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(channel);
+    }
+
+    /**
+     * Fetch the latest PC server IP address from MongoDB.
+     */
+    private void fetchServerIp() {
+        MongoClient mongoClient = realmApp.currentUser().getMongoClient("mongodb-atlas");
+        MongoDatabase database = mongoClient.getDatabase("devicedb");
+        MongoCollection<Document> serverInfoCollection = database.getCollection("ipaddresses");
+
+        serverInfoCollection.findOne(new Document("deviceId", "main-server")).getAsync(task -> {
+            if (task.isSuccess()) {
+                Document result = task.get();
+                pcServerIp = result.getString("ipAddress");
+                Log.d("ServerIP", "PC Server IP: " + pcServerIp);
+            } else {
+                Log.e("ServerIP", "Failed to find document", task.getError());
+            }
+        });
     }
 
     /**
@@ -182,8 +227,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void forwardDataToNodeJsServer(String data) {
+            if (pcServerIp == null) {
+                Log.e("DataThread", "PC Server IP is not available.");
+                return;
+            }
             try {
-                URL url = new URL("http://49.127.54.107:3168/data"); // Replace with actual server URL
+                URL url = new URL("http://" + pcServerIp + ":3168/data"); // Use the fetched IP
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
@@ -209,6 +258,4 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
-
 }
