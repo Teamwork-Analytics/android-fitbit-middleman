@@ -27,9 +27,12 @@ import io.realm.mongodb.mongo.MongoClient;
 import io.realm.mongodb.mongo.MongoCollection;
 import io.realm.mongodb.mongo.MongoDatabase;
 import org.bson.Document;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     // TODO: try configure app to increase background runtime/ always run on background
+    // Bug Found: 1. notification when in app will crash app
+    // TO FIX: The Firebase token is exposed on public repo. Please update a new one and remove from repo.
 
     private static final int HOSTING_PORT = 3000;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 100;
@@ -41,7 +44,8 @@ public class MainActivity extends AppCompatActivity {
     Thread serverThread = null;
 
     private App realmApp;
-    private String pcServerIp = null;
+    private String pcServerIp = "192.168.68.56"; // !!ChangeMe: Hardcoded ip for stability.
+    private boolean skipDatabaseIp = true; // !!ChangeMe: skip getting ip from database for stability
 
     // Life-Cycle Methods
     @Override
@@ -49,18 +53,20 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Initialize MongoDB Realm
-        Realm.init(this);
-        realmApp = new App(new AppConfiguration.Builder("middleman-realm-okirbgw").build());
+        if (!skipDatabaseIp) {
+            // Initialize MongoDB Realm
+            Realm.init(this);
+            realmApp = new App(new AppConfiguration.Builder("middleman-realm-okirbgw").build());
 
-        // Log in to MongoDB Realm
-        realmApp.loginAsync(Credentials.anonymous(), it -> {
-            if (it.isSuccess()) {
-                fetchServerIp();
-            } else {
-                Log.e("MongoDB", "Failed to log in to MongoDB Realm", it.getError());
-            }
-        });
+            // Log in to MongoDB Realm
+            realmApp.loginAsync(Credentials.anonymous(), it -> {
+                if (it.isSuccess()) {
+                    fetchServerIp();
+                } else {
+                    Log.e("MongoDB", "Failed to log in to MongoDB Realm", it.getError());
+                }
+            });
+        }
 
         // Start ServerThread for receiving and forwarding data
         this.serverThread = new Thread(new ServerThread());
@@ -178,6 +184,7 @@ public class MainActivity extends AppCompatActivity {
     class DataThread extends Thread {
         private Socket socket;
         private ExecutorService executor = Executors.newSingleThreadExecutor(); // Shared executor
+        private final String actualUser = "actualUserValue"; // !!ChangeMe: Replace with actual user/role until login page done
 
         DataThread(Socket socket) {
             this.socket = socket;
@@ -208,7 +215,8 @@ public class MainActivity extends AppCompatActivity {
                         @Override
                         public void run() {
                             Log.d("ServerThread", "Received Data: " + receivedData);
-                            forwardDataToNodeJsServer(receivedData);
+                            String modifiedData = modifyUserData(receivedData);
+                            forwardDataToNodeJsServer(modifiedData);
                         }
                     });
                 }
@@ -224,6 +232,17 @@ public class MainActivity extends AppCompatActivity {
         public void interrupt() {
             super.interrupt();
             executor.shutdownNow(); // Shutdown the executor
+        }
+
+        private String modifyUserData(String data) {
+            try {
+                JSONObject jsonObject = new JSONObject(data);
+                jsonObject.put("user", actualUser); // Modify user value
+                return jsonObject.toString();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return data; // Return original data in case of error
+            }
         }
 
         private void forwardDataToNodeJsServer(String data) {
@@ -259,3 +278,4 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
+
