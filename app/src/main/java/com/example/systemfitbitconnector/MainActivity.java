@@ -44,8 +44,8 @@ public class MainActivity extends AppCompatActivity {
     Thread serverThread = null;
 
     private App realmApp;
-    private String pcServerIp = "192.168.68.56"; // !!ChangeMe: Hardcoded ip for stability.
-    private boolean skipDatabaseIp = true; // !!ChangeMe: skip getting ip from database for stability
+    private String pcServerIp = "49.127.33.177"; // !!ChangeMe: Hardcoded ip for stability.
+    private boolean skipDatabaseIp = false; // !!ChangeMe: skip getting ip from database for stability
 
     // Life-Cycle Methods
     @Override
@@ -184,7 +184,7 @@ public class MainActivity extends AppCompatActivity {
     class DataThread extends Thread {
         private Socket socket;
         private ExecutorService executor = Executors.newSingleThreadExecutor(); // Shared executor
-        private final String actualUser = "actualUserValue"; // !!ChangeMe: Replace with actual user/role until login page done
+        private final String actualUser = "blue"; // !!ChangeMe: Replace with actual user/role until login page done
 
         DataThread(Socket socket) {
             this.socket = socket;

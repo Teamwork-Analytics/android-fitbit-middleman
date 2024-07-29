@@ -22,8 +22,13 @@ For the reminder/notification features to work properly, after installation, ope
 to Notification, and enable notification for this application (System Fitbit Connector).
 
 ## Configuration
-Prior installing the application, remember to change the url of the forwarding destination (the main pc server ip). The line to be changed can be found in 
+
+> [!Tips]
+> Do a search of `!!ChangeMe` in `MainActivity` you can find all the variable that might need to be changed.
+
+1. Prior installing the application, if `skipDatabaseIp` is `true` remember to change the url of the forwarding destination (the main pc server ip). The line to be changed can be found in 
 `MainActivity` class in `com.example.systemfitbitconnector`, or do a search for "Replace with actual server URL".
+2. Each device's colour/role will need to be changed before running the app (or installing the app) on the devices.
 
 ## How to run
 After installation, find the app on the phone to open it. The application should start working once opened.
