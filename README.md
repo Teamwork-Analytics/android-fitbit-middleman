@@ -23,8 +23,11 @@ to Notification, and enable notification for this application (System Fitbit Con
 
 ## Configuration
 
-> [!Tips]
+> [!Tip]
 > Do a search of `!!ChangeMe` in `MainActivity` you can find all the variable that might need to be changed.
+
+> [!TIP]
+> The app is designed to update the destination IP address automatically, [`fitbit-receiver`](https://github.com/Teamwork-Analytics/teamwork-visualiser-dashboard/tree/main/fitbit-receiver) is the server that updates the IP. In the occasion that it is not forwarding to the right IP, try closing the app (from running in the background) and restart the app.
 
 1. Prior installing the application, if `skipDatabaseIp` is `true` remember to change the url of the forwarding destination (the main pc server ip). The line to be changed can be found in 
 `MainActivity` class in `com.example.systemfitbitconnector`, or do a search for "Replace with actual server URL".
