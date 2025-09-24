@@ -251,6 +251,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             try {
+                Log.d("DataThread", "Forwarding to http://" + pcServerIp + ":3168/data : " + data);
                 URL url = new URL("http://" + pcServerIp + ":3168/data"); // Use the fetched IP
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
