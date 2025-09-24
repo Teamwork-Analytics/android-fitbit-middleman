@@ -36,9 +36,6 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int HOSTING_PORT = 3000;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 100;
-    private static final String FIREBASE_NOTIFICATION_CHANNEL_ID = "firebase_notification_channel";
-    private static final String FIREBASE_NOTIFICATION_CHANNEL_NAME = "Analytic Simulation Messaging Service";
-    private static final String FIREBASE_NOTIFICATION_CHANNEL_DESCRIPTION = "Notification channel for messaging teaching team/nurses via Firebase messaging service.";
 
     private ServerSocket serverSocket;
     Thread serverThread = null;
@@ -77,7 +74,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         requestNotificationPermission();
-        createNotificationChannel();
     }
 
     @Override
@@ -121,18 +117,6 @@ public class MainActivity extends AppCompatActivity {
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     NOTIFICATION_PERMISSION_REQUEST_CODE);
         }
-    }
-
-    /**
-     * Method to create notification channel. The channel created will be used in NotificationReceiver.
-     */
-    private void createNotificationChannel() {
-        int notificationImportance = NotificationManager.IMPORTANCE_HIGH;
-        NotificationChannel channel = new NotificationChannel(FIREBASE_NOTIFICATION_CHANNEL_ID,
-                FIREBASE_NOTIFICATION_CHANNEL_NAME, notificationImportance);
-        channel.setDescription(FIREBASE_NOTIFICATION_CHANNEL_DESCRIPTION);
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(channel);
     }
 
     /**
