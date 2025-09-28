@@ -3,68 +3,139 @@ package com.example.systemfitbitconnector;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
 
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class MainActivity extends AppCompatActivity {
-    // TODO: try configure app to increase background runtime/ always run on background
     private static final String TAG = "FitbitConnector";
 
     private static final int HOSTING_PORT = 3000;
-    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 100;
+    private static final int CONNECT_TIMEOUT_MS = 4000;
+    private static final int READ_TIMEOUT_MS = 6000;
+
+    // phone preferences store
+    private static final String PREFS = "cfg";
+    private static final String PREF_PC_IP = "pcServerIp";
+    private static final String PREF_ROLE = "actualUser";
 
     private ServerSocket serverSocket;
     Thread serverThread = null;
 
-    // keep a sane hardcoded fallback for first run
-    private static final int CONNECT_TIMEOUT_MS = 4000;
-    private static final int READ_TIMEOUT_MS = 6000;
-    private static final String PREFS = "cfg";
-    private static final String PREF_PC_IP = "pcServerIp";
-    private String pcServerIp = "49.127.33.177"; // Hardcoded ip for stability (if needed)
-    private boolean skipDatabaseIp = false; // skip getting ip from database for stability
+    // Rendezvous & state
     private static final String RENDEZVOUS_RESOLVE_URL = "https://colam.jiexiangfan.com/api/resolve";
+    private String pcServerIp = "49.127.33.177"; // Hardcoded ip for stability/fallback
+    private volatile String actualUser = "blue"; // user role/colour. E.g. `blue`
 
-    // Life-Cycle Methods
+    // UI refs
+    private TextView infoText;
+    private Button refreshButton;
+    private EditText roleInput;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        if (!skipDatabaseIp) {
-            // Load last known IP (if any)
-            String cached = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_PC_IP, null);
-            if (cached != null && !cached.isEmpty()) pcServerIp = cached;
+        // ---- UI wiring ----
+        infoText = findViewById(R.id.infoText);
+        refreshButton = findViewById(R.id.refreshButton);
+        roleInput = findViewById(R.id.roleInput);
 
-            // Resolve latest IP from your rendezvous API (non-blocking; with fallback)
-            resolvePcFromRendezvousAsync();
+        // Load cached settings
+        String cachedIp = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_PC_IP, null);
+        if (cachedIp != null && !cachedIp.isEmpty()) pcServerIp = cachedIp;
+        String cachedRole = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_ROLE, null);
+        if (cachedRole != null && !cachedRole.isEmpty()) actualUser = cachedRole;
 
-        }
+        // Reflect initial state in UI
+        roleInput.setText(actualUser);
+        roleInput.addTextChangedListener(new SimpleTextWatcher(s -> {
+            actualUser = s.trim();
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_ROLE, actualUser).apply();
+            updateInfoUi();
+        }));
+        updateInfoUi();
+
+        // Resolve latest IP (non-blocking) — disable button while resolving
+        setRefreshing(true);
+        resolvePcFromRendezvousAsync();
 
         // Start ServerThread for receiving and forwarding data
         this.serverThread = new Thread(new ServerThread());
         this.serverThread.start();
     }
 
-    // ====== Resolve PC IP from rendezvous API ======
+    @Override
+    protected void onStart() {
+        super.onStart();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Close server socket first to unblock accept()
+        try {
+            if (serverSocket != null) serverSocket.close();
+        } catch (Exception e) {
+            Log.w(TAG, "Server socket close failed", e);
+        }
+        if (serverThread != null) {
+            serverThread.interrupt();
+            serverThread = null;
+        }
+        // (no global executor to shutdown; we shutdown per-task below)
+    }
+
+    // ===== UI actions =====
+    public void onRefreshBtnClick(View v) {
+        setRefreshing(true);
+        resolvePcFromRendezvousAsync();
+    }
+
+
+    private void setRefreshing(boolean refreshing) {
+        if (refreshButton == null) return;
+        runOnUiThread(() -> {
+            refreshButton.setEnabled(!refreshing);
+            refreshButton.setText(refreshing ? "Getting destination server IP..." : "Refresh IP");
+        });
+    }
+
+    private void updateInfoUi() {
+        if (infoText == null) return;
+        runOnUiThread(() -> infoText.setText(
+                "Device role (colour): " + actualUser + "\n" +
+                        "Destination Server IP: " + pcServerIp + "\n"
+        ));
+    }
+
+
+    // ===== Resolve PC IP from rendezvous API =====
     private void resolvePcFromRendezvousAsync() {
-        Log.i(TAG, "Trying to resolve now");
         new Thread(() -> {
             HttpURLConnection c = null;
             try {
@@ -76,209 +147,200 @@ public class MainActivity extends AppCompatActivity {
 
                 int code = c.getResponseCode();
                 if (code == 200) {
-                    String resp;
+                    StringBuilder sb = new StringBuilder();
                     try (InputStream is = c.getInputStream();
                          BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                        StringBuilder sb = new StringBuilder();
                         String line;
                         while ((line = br.readLine()) != null) sb.append(line);
-                        resp = sb.toString();
                     }
-                    JSONObject j = new JSONObject(resp);
-                    String ip = j.optString("ipAddress", null); // your API returns { deviceId, ipAddress }
+                    JSONObject j = new JSONObject(sb.toString());
+                    String ip = j.optString("ipAddress", null); // API shape: { deviceId, ipAddress }
                     if (ip != null && !ip.isEmpty()) {
                         pcServerIp = ip;
-                        getSharedPreferences(PREFS, MODE_PRIVATE)
-                                .edit().putString(PREF_PC_IP, pcServerIp).apply();
-                        Log.i(TAG, "Resolved PC IP from API: " + pcServerIp);
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_PC_IP, pcServerIp).apply();
+                        Log.i(TAG, "Resolved PC IP: " + pcServerIp);
                     } else {
-                        Log.w(TAG, "Resolve returned empty ipAddress; using cached/fallback: " + pcServerIp);
+                        Log.w(TAG, "Resolve returned empty ipAddress; keep " + pcServerIp);
                     }
                 } else {
-                    Log.w(TAG, "Resolve HTTP " + code + "; using cached/fallback: " + pcServerIp);
+                    Log.w(TAG, "Resolve HTTP " + code + "; keep " + pcServerIp);
                 }
             } catch (Exception e) {
-                Log.w(TAG, "Resolve failed; using cached/fallback: " + pcServerIp, e);
+                Log.w(TAG, "Resolve failed; keep " + pcServerIp, e);
             } finally {
                 if (c != null) c.disconnect();
+                setRefreshing(false);
+                updateInfoUi();
             }
         }, "ResolveThread").start();
     }
 
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        requestNotificationPermission();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        // Shutdown DataThread's executor
-        if (serverThread != null) {
-            serverThread.interrupt();
-        }
-        // Close server socket when activity is destroyed
-        try {
-            if (serverSocket != null) {
-                serverSocket.close();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    // Override Methods
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission was granted. Do action that requires this permission or display messages.
-            } else {
-                // Permission denied. Handle the feature without this permission or inform the user as necessary.
-            }
-        }
-    }
-
-    /**
-     * Method to request notification permission. Triggered when the app is installed or restarted
-     */
-    private void requestNotificationPermission() {
-        // Not checking SDK version as the code is built for the latest API (34)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                    NOTIFICATION_PERMISSION_REQUEST_CODE);
-        }
-    }
-
-
-    /**
-     * ServerThread receive data on HOSTING_PORT then forward using DataThread.
-     */
+    // ===== Local server that accepts and forwards =====
     private class ServerThread implements Runnable {
         public void run() {
-            Socket socket = null;
             try {
-                serverSocket = new ServerSocket(HOSTING_PORT); // Create the ServerSocket
+                serverSocket = new ServerSocket(HOSTING_PORT);
+                serverSocket.setReuseAddress(true);
+                Log.i(TAG, "Listening on :" + HOSTING_PORT);
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Open server socket failed", e);
+                return;
             }
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    socket = serverSocket.accept(); // Accept incoming connections
-                    // Handle the accepted connection
-                    DataThread dataThread = new DataThread(socket);
-                    dataThread.start();
+                    Socket socket = serverSocket.accept(); // blocking
+                    new DataThread(socket).start();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    if (serverSocket == null || serverSocket.isClosed()) break;
+                    Log.e(TAG, "accept() failed", e);
                 }
             }
         }
     }
 
-    /**
-     * DataThread send the data to pc server.
-     */
+    // ===== Handles a single incoming request and forwards it =====
     class DataThread extends Thread {
-        private Socket socket;
-        private ExecutorService executor = Executors.newSingleThreadExecutor(); // Shared executor
-        private final String actualUser = "blue"; // !!ChangeMe: Replace with actual user/role until login page done
+        private final Socket socket;
+        private final ExecutorService executor = Executors.newSingleThreadExecutor(); // per-connection; we will shut down
 
         DataThread(Socket socket) {
             this.socket = socket;
         }
 
+        @Override
         public void run() {
-            try {
-                BufferedReader input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                String inputLine;
+            try (Socket s = socket) {
+                s.setSoTimeout(READ_TIMEOUT_MS);
+
+                BufferedInputStream in = new BufferedInputStream(s.getInputStream());
+
+                // --- Read headers as BYTES until CRLFCRLF or LFLF ---
+                ByteArrayOutputStream headerBuf = new ByteArrayOutputStream(512);
+                int b;
+                while ((b = in.read()) != -1) {
+                    headerBuf.write(b);
+                    byte[] hb = headerBuf.toByteArray();
+                    int len = hb.length;
+                    // end-of-headers: \r\n\r\n or \n\n
+                    if (len >= 4 && hb[len - 4] == '\r' && hb[len - 3] == '\n' && hb[len - 2] == '\r' && hb[len - 1] == '\n') break;
+                    if (len >= 2 && hb[len - 2] == '\n' && hb[len - 1] == '\n') break;
+                    // keep reading otherwise
+                }
+                String headers = new String(headerBuf.toByteArray(), StandardCharsets.US_ASCII);
+
+                // --- Parse Content-Length (case-insensitive) ---
                 int contentLength = -1;
-
-                // Read headers
-                while ((inputLine = input.readLine()) != null && !inputLine.isEmpty()) {
-                    if (inputLine.startsWith("Content-Length:")) {
-                        contentLength = Integer.parseInt(inputLine.split(": ")[1].trim());
+                for (String line : headers.split("\r\n")) {
+                    if (line.regionMatches(true, 0, "Content-Length:", 0, "Content-Length:".length())) {
+                        try { contentLength = Integer.parseInt(line.split(":", 2)[1].trim()); } catch (NumberFormatException ignored) {}
                     }
-                    // Avoid logging the header
-                    // Log.d("ServerThread", "Received Header: " + inputLine);
                 }
-
-                // Read body if Content-Length is found
-                if (contentLength > -1) {
-                    char[] buffer = new char[contentLength];
-                    input.read(buffer, 0, contentLength);
-                    final String receivedData = new String(buffer);
-
-                    executor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            Log.d("ServerThread", "Received Data: " + receivedData);
-                            String modifiedData = modifyUserData(receivedData);
-                            forwardDataToNodeJsServer(modifiedData);
+                if (contentLength < 0) {
+                    // Some senders use just \n; handle that too
+                    for (String line : headers.split("\n")) {
+                        if (line.trim().toLowerCase().startsWith("content-length:")) {
+                            try { contentLength = Integer.parseInt(line.split(":", 2)[1].trim()); } catch (NumberFormatException ignored) {}
                         }
-                    });
+                    }
+                }
+                if (contentLength <= 0) {
+                    Log.w(TAG, "No/invalid Content-Length; dropping request.\nHeaders:\n" + headers);
+                    return;
                 }
 
-                input.close();
-                socket.close();
+                // --- Read body BYTES (exactly contentLength) ---
+                byte[] body = new byte[contentLength];
+                int read = 0;
+                while (read < contentLength) {
+                    int r = in.read(body, read, contentLength - read);
+                    if (r == -1) break;
+                    read += r;
+                }
+                if (read != contentLength) {
+                    Log.w(TAG, "Short body read: expected " + contentLength + " bytes, got " + read);
+                }
+                final String receivedData = new String(body, 0, read, StandardCharsets.UTF_8);
+
+                // Forward off-thread, then shutdown this per-connection executor to avoid leaks
+                executor.execute(() -> {
+                    try {
+                        Log.d(TAG, "Received: " + summarize(receivedData));
+                        String modifiedData = modifyUserData(receivedData);
+                        forwardDataToNodeJsServer(modifiedData);
+                    } finally {
+                        executor.shutdown();
+                    }
+                });
+
+            } catch (java.net.SocketTimeoutException ste) {
+                Log.e(TAG, "DataThread timeout while reading request/body", ste);
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "DataThread error", e);
             }
         }
 
-        @Override
-        public void interrupt() {
-            super.interrupt();
-            executor.shutdownNow(); // Shutdown the executor
-        }
+
 
         private String modifyUserData(String data) {
             try {
                 JSONObject jsonObject = new JSONObject(data);
-                jsonObject.put("user", actualUser); // Modify user value
+                jsonObject.put("user", actualUser); // use editable field
                 return jsonObject.toString();
             } catch (Exception e) {
-                e.printStackTrace();
-                return data; // Return original data in case of error
+                Log.w(TAG, "JSON modify failed; forwarding raw", e);
+                return data;
             }
         }
 
         private void forwardDataToNodeJsServer(String data) {
-            if (pcServerIp == null) {
-                Log.e("DataThread", "PC Server IP is not available.");
+            String ip = pcServerIp;
+            if (ip == null || ip.isEmpty()) {
+                Log.e(TAG, "PC Server IP is not available.");
                 return;
             }
+            HttpURLConnection conn = null;
             try {
-                Log.d("DataThread", "Forwarding to http://" + pcServerIp + ":3168/data : " + data);
-                URL url = new URL("http://" + pcServerIp + ":3168/data"); // Use the fetched IP
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                URL url = new URL("http://" + ip + ":3168/data");
+                conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+                conn.setReadTimeout(READ_TIMEOUT_MS);
                 conn.setDoOutput(true);
 
-                OutputStream os = conn.getOutputStream();
-                os.write(data.getBytes("UTF-8")); // Specify charset
-                os.flush();
-                os.close();
+                byte[] payload = data.getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(payload);
+                    os.flush();
+                }
 
                 int responseCode = conn.getResponseCode();
                 if (responseCode == HttpURLConnection.HTTP_OK) {
-                    // Handle success
-                    Log.d("DataThread", "Successfully forwarded data. Response: " + responseCode);
+                    Log.d(TAG, "Forward OK (" + responseCode + ")");
                 } else {
-                    // Handle server error
-                    Log.d("DataThread", "Error forwarding data. Response: " + responseCode);
+                    Log.d(TAG, "Forward non-OK (" + responseCode + ")");
                 }
-
-                conn.disconnect();
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Forward failed to " + ip, e);
+            } finally {
+                if (conn != null) conn.disconnect();
             }
         }
     }
-}
 
+    private static String summarize(String s) {
+        if (s == null) return "null";
+        int max = 300;
+        return s.length() <= max ? s : s.substring(0, max) + "…(" + s.length() + " chars)";
+    }
+
+    // ---- tiny TextWatcher helper ----
+    private static class SimpleTextWatcher implements android.text.TextWatcher {
+        interface OnChange { void onChange(String s); }
+        private final OnChange cb;
+        SimpleTextWatcher(OnChange cb) { this.cb = cb; }
+        @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+        @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+        @Override public void afterTextChanged(android.text.Editable s) { cb.onChange(s.toString()); }
+    }
+}
