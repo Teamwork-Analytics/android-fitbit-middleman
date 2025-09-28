@@ -4,8 +4,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.Manifest;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
@@ -19,20 +17,14 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import io.realm.Realm;
-import io.realm.mongodb.App;
-import io.realm.mongodb.AppConfiguration;
-import io.realm.mongodb.Credentials;
-import io.realm.mongodb.mongo.MongoClient;
-import io.realm.mongodb.mongo.MongoCollection;
-import io.realm.mongodb.mongo.MongoDatabase;
-import org.bson.Document;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     // TODO: try configure app to increase background runtime/ always run on background
-    // Bug Found: 1. notification when in app will crash app
-    // TO FIX: The Firebase token is exposed on public repo. Please update a new one and remove from repo.
+    private static final String TAG = "FitbitConnector";
 
     private static final int HOSTING_PORT = 3000;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 100;
@@ -40,9 +32,14 @@ public class MainActivity extends AppCompatActivity {
     private ServerSocket serverSocket;
     Thread serverThread = null;
 
-    private App realmApp;
-    private String pcServerIp = "49.127.33.177"; // !!ChangeMe: Hardcoded ip for stability.
-    private boolean skipDatabaseIp = false; // !!ChangeMe: skip getting ip from database for stability
+    // keep a sane hardcoded fallback for first run
+    private static final int CONNECT_TIMEOUT_MS = 4000;
+    private static final int READ_TIMEOUT_MS = 6000;
+    private static final String PREFS = "cfg";
+    private static final String PREF_PC_IP = "pcServerIp";
+    private String pcServerIp = "49.127.33.177"; // Hardcoded ip for stability (if needed)
+    private boolean skipDatabaseIp = false; // skip getting ip from database for stability
+    private static final String RENDEZVOUS_RESOLVE_URL = "https://colam.jiexiangfan.com/api/resolve";
 
     // Life-Cycle Methods
     @Override
@@ -51,24 +48,63 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         if (!skipDatabaseIp) {
-            // Initialize MongoDB Realm
-            Realm.init(this);
-            realmApp = new App(new AppConfiguration.Builder("middleman-realm-okirbgw").build());
+            // Load last known IP (if any)
+            String cached = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_PC_IP, null);
+            if (cached != null && !cached.isEmpty()) pcServerIp = cached;
 
-            // Log in to MongoDB Realm
-            realmApp.loginAsync(Credentials.anonymous(), it -> {
-                if (it.isSuccess()) {
-                    fetchServerIp();
-                } else {
-                    Log.e("MongoDB", "Failed to log in to MongoDB Realm", it.getError());
-                }
-            });
+            // Resolve latest IP from your rendezvous API (non-blocking; with fallback)
+            resolvePcFromRendezvousAsync();
+
         }
 
         // Start ServerThread for receiving and forwarding data
         this.serverThread = new Thread(new ServerThread());
         this.serverThread.start();
     }
+
+    // ====== Resolve PC IP from rendezvous API ======
+    private void resolvePcFromRendezvousAsync() {
+        Log.i(TAG, "Trying to resolve now");
+        new Thread(() -> {
+            HttpURLConnection c = null;
+            try {
+                URL u = new URL(RENDEZVOUS_RESOLVE_URL);
+                c = (HttpURLConnection) u.openConnection();
+                c.setRequestMethod("GET");
+                c.setConnectTimeout(CONNECT_TIMEOUT_MS);
+                c.setReadTimeout(READ_TIMEOUT_MS);
+
+                int code = c.getResponseCode();
+                if (code == 200) {
+                    String resp;
+                    try (InputStream is = c.getInputStream();
+                         BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        resp = sb.toString();
+                    }
+                    JSONObject j = new JSONObject(resp);
+                    String ip = j.optString("ipAddress", null); // your API returns { deviceId, ipAddress }
+                    if (ip != null && !ip.isEmpty()) {
+                        pcServerIp = ip;
+                        getSharedPreferences(PREFS, MODE_PRIVATE)
+                                .edit().putString(PREF_PC_IP, pcServerIp).apply();
+                        Log.i(TAG, "Resolved PC IP from API: " + pcServerIp);
+                    } else {
+                        Log.w(TAG, "Resolve returned empty ipAddress; using cached/fallback: " + pcServerIp);
+                    }
+                } else {
+                    Log.w(TAG, "Resolve HTTP " + code + "; using cached/fallback: " + pcServerIp);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Resolve failed; using cached/fallback: " + pcServerIp, e);
+            } finally {
+                if (c != null) c.disconnect();
+            }
+        }, "ResolveThread").start();
+    }
+
 
     @Override
     protected void onStart() {
@@ -119,24 +155,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Fetch the latest PC server IP address from MongoDB.
-     */
-    private void fetchServerIp() {
-        MongoClient mongoClient = realmApp.currentUser().getMongoClient("mongodb-atlas");
-        MongoDatabase database = mongoClient.getDatabase("devicedb");
-        MongoCollection<Document> serverInfoCollection = database.getCollection("ipaddresses");
-
-        serverInfoCollection.findOne(new Document("deviceId", "main-server")).getAsync(task -> {
-            if (task.isSuccess()) {
-                Document result = task.get();
-                pcServerIp = result.getString("ipAddress");
-                Log.d("ServerIP", "PC Server IP: " + pcServerIp);
-            } else {
-                Log.e("ServerIP", "Failed to find document", task.getError());
-            }
-        });
-    }
 
     /**
      * ServerThread receive data on HOSTING_PORT then forward using DataThread.
