@@ -68,6 +68,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // prune local backup files to 5 days (change to preference)
+        pruneOldBackups(5);
+
         // ---- UI wiring ----
         infoText = findViewById(R.id.infoText);
         refreshButton = findViewById(R.id.refreshButton);
@@ -105,6 +108,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
+        // shutdown locla backup executor
+        diskExecutor.shutdown();
+
         // Close server socket first to unblock accept()
         try {
             if (serverSocket != null) serverSocket.close();
@@ -274,7 +281,8 @@ public class MainActivity extends AppCompatActivity {
                     try {
                         Log.d(TAG, "Received: " + summarize(receivedData));
                         String modifiedData = modifyUserData(receivedData);
-                        forwardDataToNodeJsServer(modifiedData);
+                        backupPayload(modifiedData); // backup to local file
+                        forwardDataToNodeJsServer(modifiedData); // forward to server
                     } finally {
                         executor.shutdown();
                     }
@@ -351,4 +359,64 @@ public class MainActivity extends AppCompatActivity {
         @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
         @Override public void afterTextChanged(android.text.Editable s) { cb.onChange(s.toString()); }
     }
+
+    private File getBackupDir() {
+        // App-private external dir; visible via USB but no extra permission needed.
+        File dir = new File(getExternalFilesDir(null), "backups");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    private File getTodayBackupFile() {
+        String day = new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date());
+        return new File(getBackupDir(), "incoming-" + day + ".jsonl");
+    }
+
+    private void appendBackupLine(String jsonLine) {
+        diskExecutor.execute(() -> {
+            try (FileOutputStream fos = new FileOutputStream(getTodayBackupFile(), true)) {
+                fos.write(jsonLine.getBytes(StandardCharsets.UTF_8));
+                fos.write('\n');
+            } catch (Exception e) {
+                Log.e(TAG, "Backup write failed", e);
+            }
+        });
+    }
+
+    /** Save one record to JSONL.
+     *  Wraps payload with a timestamp; if payload isn't valid JSON, stores as "payload_raw".
+     */
+    private void backupPayload(String payload) {
+        try {
+            JSONObject line = new JSONObject();
+            line.put("ts", System.currentTimeMillis());
+            try {
+                line.put("payload", new JSONObject(payload));
+            } catch (Exception notJson) {
+                line.put("payload_raw", payload);
+            }
+            appendBackupLine(line.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "backupPayload failed", e);
+        }
+    }
+
+    /** (Optional) prune files older than N days; call once on startup */
+    private void pruneOldBackups(int keepDays) {
+        try {
+            long cutoff = System.currentTimeMillis() - keepDays * 24L * 3600L * 1000L;
+            File[] files = getBackupDir().listFiles();
+            if (files == null) return;
+            for (File f : files) {
+                if (f.isFile() && f.lastModified() < cutoff) {
+                    // best-effort; ignore result
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "pruneOldBackups failed", e);
+        }
+    }
+
 }
