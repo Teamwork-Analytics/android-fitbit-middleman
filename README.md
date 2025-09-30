@@ -15,6 +15,12 @@ This application acts as a middle-man connecting Fitbit and PC Main Server. It i
 
 ## How to install
 
+### Option 1: debug apk file on GitHub
+
+There is a release apk file on GitHub Repo. Download the apk file from the phone to install the app. You will need to allow the permission requested on device while downloading and installing. Note that the apk file is unsigned debug build, it is not meant for public, but it is a quick and easy solution for internal use.
+
+### Option 2: install using Android Studio
+
 To install the application on the devices (phones), connect the phone to the computer that has this project opened in
 Android Studio. On the top right of Android Studio, select the devices connected, and click `run app` button (green triangle).
 After running the app, Android studio should install a dev version of the app in the phone. The app is called `System Fitbit Connector` on
