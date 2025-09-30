@@ -19,6 +19,8 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -27,6 +29,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -49,6 +54,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String RENDEZVOUS_RESOLVE_URL = "https://colam.jiexiangfan.com/api/resolve";
     private String pcServerIp = "49.127.33.177"; // Hardcoded ip for stability/fallback
     private volatile String actualUser = "blue"; // user role/colour. E.g. `blue`
+
+    // Write to local file as backup
+    private final ExecutorService diskExecutor = Executors.newSingleThreadExecutor();
 
     // UI refs
     private TextView infoText;
