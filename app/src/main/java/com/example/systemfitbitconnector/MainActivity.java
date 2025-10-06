@@ -1,12 +1,7 @@
 package com.example.systemfitbitconnector;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -51,6 +46,10 @@ public class MainActivity extends AppCompatActivity {
     Thread serverThread = null;
 
     // Rendezvous & state
+    // TODO remove this. The solution using an external URL works if only if:
+    // 1. Stable Internet connection
+    // 2. URL is always available.
+    // 3. The owner of the URL is the organisation.
     private static final String RENDEZVOUS_RESOLVE_URL = "https://colam.jiexiangfan.com/api/resolve";
     private String pcServerIp = "49.127.33.177"; // Hardcoded ip for stability/fallback
     private volatile String actualUser = "blue"; // user role/colour. E.g. `blue`
@@ -60,8 +59,10 @@ public class MainActivity extends AppCompatActivity {
 
     // UI refs
     private TextView infoText;
-    private Button refreshButton;
+    private Button updateButton;
     private EditText roleInput;
+    private EditText ipAddressInput;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,8 +74,9 @@ public class MainActivity extends AppCompatActivity {
 
         // ---- UI wiring ----
         infoText = findViewById(R.id.infoText);
-        refreshButton = findViewById(R.id.refreshButton);
+        updateButton = findViewById(R.id.updateButton);
         roleInput = findViewById(R.id.roleInput);
+        ipAddressInput = findViewById(R.id.ipAddressInput);
 
         // Load cached settings
         String cachedIp = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_PC_IP, null);
@@ -82,14 +84,19 @@ public class MainActivity extends AppCompatActivity {
         String cachedRole = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_ROLE, null);
         if (cachedRole != null && !cachedRole.isEmpty()) actualUser = cachedRole;
 
+
         // Reflect initial state in UI
         roleInput.setText(actualUser);
-        roleInput.addTextChangedListener(new SimpleTextWatcher(s -> {
-            actualUser = s.trim();
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_ROLE, actualUser).apply();
-            updateInfoUi();
-        }));
+        ipAddressInput.setText(pcServerIp);
+
         updateInfoUi();
+        // TODO this listeners while reactive can send noise data to server, for instance while
+        // editing the sever will receive g.. gr... gre... green.
+        // roleInput.addTextChangedListener(new SimpleTextWatcher(s -> {
+        //   actualUser = s.trim();
+        //   getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_ROLE, actualUser).apply();
+        //   updateInfoUi();
+        //}));
 
         // Resolve latest IP (non-blocking) — disable button while resolving
         setRefreshing(true);
@@ -126,17 +133,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ===== UI actions =====
-    public void onRefreshBtnClick(View v) {
+    public void onUpdateInformationBtnClick(View v) {
         setRefreshing(true);
-        resolvePcFromRendezvousAsync();
+//        resolvePcFromRendezvousAsync();
+        setActualUser();
+        setIPAddressFromInput();
+        updateInfoUi();
+        setRefreshing(false);
     }
-
-
     private void setRefreshing(boolean refreshing) {
-        if (refreshButton == null) return;
+        if (updateButton == null) return;
         runOnUiThread(() -> {
-            refreshButton.setEnabled(!refreshing);
-            refreshButton.setText(refreshing ? "Getting destination server IP..." : "Refresh IP");
+            updateButton.setEnabled(!refreshing);
+            updateButton.setText(refreshing ? "Updating IP and Role..." : "Update IP and Role");
         });
     }
 
@@ -188,6 +197,16 @@ public class MainActivity extends AppCompatActivity {
                 updateInfoUi();
             }
         }, "ResolveThread").start();
+    }
+
+    private void setActualUser() {
+        actualUser = roleInput.getText().toString();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_ROLE, actualUser).apply();
+    }
+
+    private void setIPAddressFromInput() {
+        pcServerIp = ipAddressInput.getText().toString();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(PREF_PC_IP, pcServerIp).apply();
     }
 
     // ===== Local server that accepts and forwards =====

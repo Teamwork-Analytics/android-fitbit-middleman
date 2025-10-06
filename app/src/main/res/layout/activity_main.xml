@@ -32,12 +32,12 @@
         android:id="@+id/instructionText"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Change device role (e.g. colour) below: "
-        app:layout_constraintTop_toBottomOf="@id/infoText"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="10dp"
-        android:padding="20dp" />
+        android:padding="20dp"
+        android:text="Change device role (e.g. colour) and destionation IP Address below: "
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/infoText" />
 
     <EditText
         android:id="@+id/roleInput"
@@ -51,15 +51,28 @@
         android:layout_marginTop="12dp"
         android:padding="20dp" />
 
+    <EditText
+        android:id="@+id/ipAddressInput"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="Edit IP Address of main server"
+        android:inputType="text"
+        android:padding="20dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/roleInput" />
+
     <Button
-        android:id="@+id/refreshButton"
+        android:id="@+id/updateButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:onClick="onRefreshBtnClick"
-        android:text="Refresh IP"
-        app:layout_constraintTop_toBottomOf="@id/roleInput"
-        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="72dp"
+        android:onClick="onUpdateInformationBtnClick"
+        android:text="Update IP and Role"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/ipAddressInput" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
